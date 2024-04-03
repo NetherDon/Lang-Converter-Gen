@@ -1,0 +1,462 @@
+COMPILER CS_TO_JAVA
+
+CHARACTERS  
+  letter = 'A'..'Z'+'a'..'z'.
+  digit = '0'..'9'.
+  cr  = '\r'.  lf  = '\n'.  tab = '\t'.
+  eol = '\r'.
+  any = ANY.
+  validForString = ANY - '\"'.
+  validForChar = ANY - '\''.
+
+TOKENS
+  ident  = letter {letter | digit}.
+  number = digit { [ '_' ] digit } [ '.' [ digit { [ '_' ] digit } ] ].
+  string = '\"' { "\\\"" | validForString } '\"'.
+  char = '\'' ( "\\\'" | validForChar ) '\''.
+  true = "true".
+  false = "false".
+
+COMMENTS FROM "/*" TO "*/" NESTED
+COMMENTS FROM "//" TO eol 
+
+IGNORE cr + lf + tab
+PRODUCTIONS
+CS_TO_JAVA =
+  ClassDeclaration<"class", false>
+  (. C.end(); .)
+.
+
+Identifier = ident.
+QualifiedIdentifier<out String name> =
+  (. var list = new java.util.ArrayList<String>(); .)
+  Identifier (. list.add(t.val); .)
+  { "." Identifier (. list.add(t.val); .) }
+  (. name = String.join(".", list); .)
+.
+//QualifiedIdentifierList = (. var text = ""; .) QualifiedIdentifier<out text> { "," QualifiedIdentifier<out text> }.
+
+Literal<C.Group group> =
+  (. C.els.push("literal", group); .)
+  (
+      string
+    | char
+    | number
+    | BooleanLiteral
+  ) (. C.els.get().name(t.val); .)
+  (. C.els.pop(); .)
+.
+
+BooleanLiteral =
+  true | false
+.
+
+ClassDeclaration<String name, boolean list> =
+  (. C.els.push("class", name, list); .)
+  { Modifiers (. C.els.get().add("modifiers", t.val); .)  } 
+  "class" 
+  Identifier (. C.els.get().name(t.val); .)
+  ClassBlock
+  (. C.els.pop(); .)
+.
+
+ClassBlock =
+  "{"
+    { 
+      (. C.els.push(C.list("members")); .)
+      { 
+        Modifiers (. C.els.get().add("modifiers", t.val); .)
+      }
+      Type<C.group("type")>
+      Identifier (. C.els.get().name(t.val); .)
+      (
+        MethodDeclaration
+        | GlobalVariableDeclaration
+      )
+      (. C.els.pop(); .)
+    }
+  "}"
+.
+
+Modifiers = 
+    "public"
+  | "protected"
+  | "private"
+  | "static"
+  | "sealed"
+  | "override"
+  | "virtual"
+  | "readonly"
+.
+
+GlobalVariableDeclaration=
+  (. C.els.get().type("global_variable_declaration"); .)
+  "=" Expression<C.group("value")> ";"
+.
+
+MethodDeclaration =
+  (. C.els.get().type("method_declaration"); .)
+  "("
+  [ Parameters<C.list("parameters")> ]
+  ")"
+  Block<C.group("block")>
+.
+
+Type<C.Group group> =
+  VoidType<group> | NonVoidType<group>
+.
+
+VoidType<C.Group group> =
+  (. C.els.push("type", group); .)
+  "void" (. C.els.get().name(t.val); .)
+  (. C.els.pop(); .)
+.
+
+NonVoidType<C.Group group> =
+  (. 
+    C.els.push("type", group);
+    String type = null;
+    int dim = 0; 
+  .)
+  QualifiedIdentifier<out type>
+  [ "?" (. C.els.get().flag("nullable"); .) ]
+  [
+    (. dim++; .)
+    "["
+    { "," (. dim++; .) }
+    "]"
+  ]
+  (. 
+    C.els.get().val("array_dimension", dim);
+    C.els.get().name(type); 
+    C.els.pop(group);
+  .)
+.
+
+Parameters<C.Group group> =
+  Parameter<group> { ',' Parameter<group> }
+.
+
+Parameter<C.Group group> =
+  (. C.els.push("parameter", group); .)
+  (
+    (
+        "out" (. C.els.get().flag("out"); .)
+      | "ref" (. C.els.get().flag("ref"); .)
+    )
+    Type<C.group("type")> 
+    Identifier (. C.els.get().name(t.val); .) 
+    |
+    Type<C.group("type")> 
+    Identifier (. C.els.get().name(t.val); .) 
+    [ ParameterValue<C.group("value")> ]
+  )
+  (. C.els.pop(); .)
+.
+
+ParameterValue<C.Group group> =
+  "=" Literal<group>
+.
+
+Block<C.Group group> =
+  (. C.els.push("block", group); .)
+  "{" [ StatementList<C.list("statements")> ] "}"
+  (. C.els.pop(); .)
+.
+
+StatementList<C.Group group> =
+  Statement<group> { Statement<group> }
+.
+
+Statement<C.Group group> =
+  EmptyStatement
+  | NonEmptyStatement<group>
+.
+
+EmptyStatement =
+  ";"
+.
+
+NonEmptyStatement<C.Group group> =
+  Block<group>
+  | IF (C.isMethodCall(this)) MethodStatement<group>
+  | IF (C.isAssignment(this)) AssignmentStatement<group>
+  | LocalVariableDeclarationStatement<group>
+  | ReturnStatement<group>
+  | IfStatement<group>
+  | WhileStatement<group>
+  | DoWhileStatement<group>
+  | ForStatement<group>
+  | ForeachStatement<group>
+.
+
+ReturnStatement<C.Group group> =
+  (. C.els.push("return_statement", group); .)
+  "return" [ Expression<C.group("value")> ] ";"
+  (. C.els.pop(); .)
+.
+
+AssignmentStatement<C.Group group> =
+  (. 
+    C.els.push("assignment", group); 
+    C.els.get().flag("statement");
+  .)
+  Assigment<null> ";"
+  (. C.els.pop(); .)
+.
+
+Assigment<C.Group group> =
+  (. C.els.push("assignment", group); .)
+  Identifier (. C.els.get().name(t.val); .)
+  ( "=" | "+=" | "-=" | "/=" | "*=" | "%=" | "&=" | "|=" ) 
+  (. C.els.get().val("operator", t.val); .)
+  Expression<C.group("value")>
+  (. C.els.pop(group); .)
+.
+
+MethodStatement<C.Group group> =
+  (. 
+    C.els.push("method_call", group);
+    C.els.get().flag("statement");
+  .)
+  QualifiedIdentifier<out String text> (. C.els.get().name(text); .)
+  "(" [ ArgumentList<C.list("arguments")> ] ")" ";"
+  (. C.els.pop(); .)
+.
+
+ArgumentList<C.Group group> =
+  Argument<group> { "," Argument<group> }
+.
+
+Argument<C.Group group> =
+  Expression<group>
+.
+
+ForStatement<C.Group group> =
+  (. C.els.push("for_statement", group); .)
+  "for" "(" 
+  [ ForInitializer<C.group("init")> ] ";"
+  [ ForCondition<C.group("condition")> ] ";"
+  [ ForIterator<C.list("iterators")> ] 
+  ")" 
+  NonEmptyStatement<C.group("block")>
+  (. C.els.pop(); .)
+.
+
+ForInitializer<C.Group group> =
+  LocalVariableDeclaration<group>// { "," ExplicitlyLocalVariableDeclarator<group> }
+.
+
+ForCondition<C.Group group> =
+  Expression<group>
+.
+
+ForIterator<C.Group group> =
+  Expression<group> { "," Expression<group> }
+.
+
+ForeachStatement<C.Group group> =
+  (. C.els.push("foreach_statement", group); .)
+  "foreach" "(" 
+  Type<C.group("type")>
+  Identifier (. C.els.get().name(t.val); .)
+  "in"
+  Expression<C.group("collection")>
+  ")" 
+  NonEmptyStatement<C.group("block")>
+  (. C.els.pop(); .)
+.
+
+IfStatement<C.Group group> =
+  (. C.els.push("if_statement", group); .)
+  "if" "(" Expression<C.group("expression")> ")" NonEmptyStatement<C.group("block")>
+  (. C.els.pop(); .)
+.
+
+WhileStatement<C.Group group> =
+  (. C.els.push("while_statement", group); .)
+  "while" "(" Expression<C.group("expression")> ")" NonEmptyStatement<C.group("block")>
+  (. C.els.pop(); .)
+.
+
+DoWhileStatement<C.Group group> =
+  (. C.els.push("while_statement", group); C.els.get().flag("reverse"); .)
+  "do" NonEmptyStatement<C.group("block")> "while" "(" Expression<C.group("expression")> ")"
+  (. C.els.pop(); .)
+.
+
+LocalVariableDeclarationStatement<C.Group group> =
+  (. 
+    C.els.push("local_variable_declaration", group);
+    C.els.get().flag("statement");
+  .)
+  LocalVariableDeclaration<null> ";"
+  (. C.els.pop(group); .)
+.
+
+LocalVariableDeclaration<C.Group group> =
+  (. C.els.push("local_variable_declaration", group); .)
+  (
+      ImplicitlyTypedLocalVariableDeclaration
+    | ExplicitlyLocalVariableDeclaration
+  )
+  (. C.els.pop(group); .)
+.
+
+ImplicitlyTypedLocalVariableDeclaration =
+  (. C.els.get().flag("implicit"); .)
+  "var" ImplicitlyTypedLocalVariableDeclarator<C.list("declarators")>
+.
+
+ImplicitlyTypedLocalVariableDeclarator<C.Group group> =
+  (. C.els.push("local_variable_declarator", group); .)
+  Identifier (. C.els.get().name(t.val); .)
+  "=" 
+  Expression<C.group("value")>
+  (. C.els.pop(); .)
+.
+
+ExplicitlyLocalVariableDeclaration =
+  Type<C.group("type")>
+  ExplicitlyLocalVariableDeclarators<C.list("declarators")>
+.
+
+ExplicitlyLocalVariableDeclarators<C.Group group> =
+  ExplicitlyLocalVariableDeclarator<group> { "," ExplicitlyLocalVariableDeclarator<group> }
+.
+
+ExplicitlyLocalVariableDeclarator<C.Group group> =
+  (. C.els.push("local_variable_declarator", group); .)
+  Identifier (. C.els.get().name(t.val); .)
+  [ 
+    "=" 
+    Expression<C.group("value")> 
+  ]
+  (. C.els.pop(); .)
+.
+
+Expression<C.Group group> =
+  ConditionalOrExpression<group>
+.
+
+ValueExpression<C.Group group> =
+  Literal<group>
+  | 
+  (
+    (. C.els.push("variable", group); .)
+    QualifiedIdentifier<out String name> (. C.els.get().name(name); .)
+    [ 
+      ArrayIndices<C.list("indices")> 
+      |
+      (
+        (. C.els.get().type("method_call"); .)
+        "(" [ ArgumentList<C.list("arguments")> ] ")"
+      )
+    ]
+    (. C.els.pop(); .)
+  )
+.
+
+ArrayIndices<C.Group group> =
+  "[" Expression<group> { "," Expression<group> } "]"
+.
+
+UnaryExpression<C.Group group> =
+  (. 
+    C.els.push("unary_expression", group); 
+    var childGroup = C.group("value");
+    String operand = null;
+    var pre = true;
+  .)
+  (
+      ParenthesizedExpression<childGroup>
+    | ("++" | "--") (. operand = t.val; .) 
+      ValueExpression<childGroup>
+    | "!" (. operand = t.val; .) 
+      (
+          ValueExpression<childGroup> 
+        | ParenthesizedExpression<childGroup>
+      )
+    | ValueExpression<childGroup> 
+      [ 
+        ( "++" | "--" ) (. operand = t.val; pre = false; .)
+      ]
+  )
+  (.
+    C.els.get().val("operand", operand);
+    C.els.get().val("pre", pre);
+    C.els.pop(); 
+  .)
+.
+
+ParenthesizedExpression<C.Group group> =
+  (. C.els.push("parenthesized_expression", group); .)
+  "(" Expression<C.group("expression")> ")"
+  (. C.els.pop(); .)
+.
+
+MultiplicativeExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  UnaryExpression<C.group("left_value")> 
+  [
+    ( "*" | "/" | "%" )
+    (. C.els.get().val("operator", t.val); .)
+    MultiplicativeExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+AdditiveExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  MultiplicativeExpression<C.group("left_value")> 
+  [
+    ( "+" | "-" )
+    (. C.els.get().val("operator", t.val); .)
+    AdditiveExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+RelationalExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  AdditiveExpression<C.group("left_value")>  
+  [
+    ( "<" | ">" | ">=" | "<=" )
+    (. C.els.get().val("operator", t.val); .)
+    RelationalExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+EqualityExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  RelationalExpression<C.group("left_value")>  
+  [
+    ( "==" | "!=" )
+    (. C.els.get().val("operator", t.val); .)
+    EqualityExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+ConditionalAndExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  EqualityExpression<C.group("left_value")>  
+  [
+    "&&" (. C.els.get().val("operator", t.val); .)
+    ConditionalAndExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+ConditionalOrExpression<C.Group group> =
+  (. C.els.push("expression", group); .)
+  ConditionalAndExpression<C.group("left_value")>  
+  [
+    "||" (. C.els.get().val("operator", t.val); .)
+    ConditionalOrExpression<C.group("right_value")>
+  ]
+  (. C.els.pop(); .)
+.
+
+END CS_TO_JAVA.

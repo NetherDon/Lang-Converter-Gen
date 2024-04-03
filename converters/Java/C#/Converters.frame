@@ -1,0 +1,893 @@
+import java.util.Stack;
+import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Map;
+import java.util.HashMap;
+
+import static -----> package.JavaWriters.*;
+import static -----> package.Core.*;
+
+public class Converters extends Writers
+{
+    private static String GROUP_NAME = "parent-group-name";
+    private static String GROUP_LIST = "parent-group-list";
+    public static Elements els = new Elements(Main.FILE);
+    public static Utils.Scopes scope = new Utils.Scopes();
+    private boolean addHolderClass = false;
+
+    private static final Map<String, String> METHODS = new HashMap<>()
+    {{
+        put("Console.WriteLine", "System.out.println");
+        put("Console.Write", "System.out.print");
+        put("Int32.Parse", "Integer.valueOf");
+        put("Convert.ToInt32", "Integer.valueOf");
+        put("Convert.ToDouble", "Double.valueOf");
+        put("Convert.ToBoolean", "Boolean.valueOf");
+        put("Math.Sqrt", "Math.sqrt");
+        put("Math.Min", "Math.min");
+        put("Math.Max", "Math.max");
+        put("Math.Cos", "Math.cos");
+        put("Math.Sin", "Math.sin");
+        put("Math.Floor", "Math.floor");
+        put("Math.Ceiling", "Math.ceil");
+        put("Math.Round", "Math.round");
+    }};
+
+    private static final Map<String, String> TYPES = new HashMap<>()
+    {{
+        put("string", "String");
+        put("bool", "boolean");
+    }};
+
+    private static final Map<String, String> GENERIC_TYPES = new HashMap<>()
+    {{
+        put("bool", "Boolean");
+        put("int", "Integer");
+        put("long", "Long");
+        put("char", "Character");
+        put("float", "Float");
+        put("double", "Double");
+    }};
+
+    private static final Map<String, String> STRING_METHODS = new HashMap<>()
+    {{
+        put("Length", "length");
+        put("Substring", "substring");
+    }};
+
+    public Writer PRINTLN = new Writer(
+        100,
+        (el) -> el.is("method_call") && METHODS.containsKey(el.getName()),
+        (c) ->
+        {
+            els.push("method_call", getGroup(c.element, C.list("statements")));
+            els.get().val("is_statement", c.element.getFlag("statement"));
+            String s = METHODS.get(c.element.getName());
+            els.get().name(s);
+            c.element.get("arguments").ifPresent((dec) ->
+            {
+                for (int i = 0; i < dec.size(); i++)
+                {
+                    Element el = dec.get(i);
+                    this.apply(c.el(el), C.list("arguments"));
+                }
+            });
+            els.pop();
+        }
+    );
+
+    public Writer STRING_LENGTH_MEMBER = new Writer(
+        100,
+        (el) -> 
+        {
+            var s = el.getName().split("\\.");
+            if (s.length != 2)
+            {
+                return false;
+            }
+
+            var varName = s[0];
+            var memberName = s[1];
+
+            var variable = scope.get().getByName(varName);
+            if (variable == null || !variable.type.equals(new Utils.Type("string")) || variable.type.isArray())
+            {
+                return false;
+            }
+
+            if (el.is("variable"))
+            {
+                return memberName.equals("Length");
+            }
+            else if (el.is("method_call"))
+            {
+                return STRING_METHODS.containsKey(memberName);
+            }
+            else return false;
+        },
+        (c) ->
+        {
+            var s = c.element.getName().split("\\.");
+            var varName = s[0];
+            var memberName = s[1];
+
+            els.push("method_call", getGroup(c.element, C.list("statements")));
+            els.get().name(varName + "." + STRING_METHODS.get(memberName));
+            c.element.get("arguments").ifPresent((dec) ->
+            {
+                for (int i = 0; i < dec.size(); i++)
+                {
+                    this.apply(c.el(dec.get(i)), C.list("arguments"));
+                }
+            });
+            els.pop();
+        }
+    );
+
+    public Writer ARRAY_LENGTH_MEMBER = new Writer(
+        100,
+        (el) -> 
+        {
+            if (!el.is("variable"))
+            {
+                return false;
+            }
+
+            var s = el.getName().split("\\.");
+            if (s.length != 2)
+            {
+                return false;
+            }
+
+            var varName = s[0];
+            var memberName = s[1];
+
+            var variable = scope.get().getByName(varName);
+            if (memberName.equals("Length") && variable != null)
+            {
+                return variable.type.isArray();
+            }
+
+            return false;
+        },
+        (c) ->
+        {
+            var s = c.element.getName().split("\\.");
+            var varName = s[0];
+            var memberName = s[1];
+
+            els.push("variable", getGroup(c.element, C.list("value")));
+            els.get().name(varName + ".length");
+            els.pop();
+        }
+    );
+
+
+
+    public Writer FILE = new Writer(
+        "file",
+        (c) ->
+        {
+            var clazz = c.element.getElement("class");
+
+            if (clazz.isPresent())
+            {
+                els.push("class", "main_class");
+                this.write(c.el(clazz.get()));
+                addHolderClass(c);
+                els.pop();
+            }
+        }
+    );
+
+    public Writer GLOBAL_VARIABLE_DECLARATION = new Writer(
+        "global_variable_declaration",
+        (c) ->
+        {
+            els.push("global_variable_declaration", getGroup(c.element, C.list("members")));
+
+            els.get().name(c.element.getName());
+
+            var mods = c.element.get("modifiers");
+
+            if (mods.isPresent())
+            {
+                for (int i = 0; i < mods.get().size(); i++)
+                {
+                    var mod = mods.get().<String>get(i);
+                    switch (mod)
+                    {
+                        case "public": els.get().val("access_modifier", AM.PUBLIC); break;
+                        case "private": els.get().val("access_modifier", AM.PRIVATE); break;
+                        case "protected": els.get().val("access_modifier", AM.PROTECTED); break;
+                        case "static": els.get().flag("static"); break;
+                        case "readonly": els.get().flag("final"); break;
+                    }
+                }
+            }
+
+            var val = c.element.getElement("value").get();
+            this.apply(c.el(val), C.group("value"));
+
+            var type = c.element.getElement("type").get();
+            this.apply(c.el(type), C.group("type"));
+
+            els.pop();
+        }
+    );
+
+    public Writer CLASS = new Writer(
+        "class",
+        (c) ->
+        {
+            els.get().name(c.element.getName());
+
+            var mods = c.element.get("modifiers");
+
+            if (mods.isPresent())
+            {
+                for (int i = 0; i < mods.get().size(); i++)
+                {
+                    var mod = mods.get().<String>get(i);
+                    switch (mod)
+                    {
+                        case "public": els.get().val("access_modifier", AM.PUBLIC); break;
+                        case "private": els.get().val("access_modifier", AM.PRIVATE); break;
+                        case "protected": els.get().val("access_modifier", AM.PROTECTED); break;
+                        case "sealed": els.get().flag("final"); break;
+                        case "static": els.get().flag("static"); break;
+                    }
+                }
+            }
+
+            var methods = c.element.get("members");
+            if (methods.isPresent())
+            {
+                for (int i = 0; i < methods.get().size(); i++)
+                {
+                    Element methodEl = methods.get().get(i);
+                    this.apply(c.el(methodEl), C.list("members"));
+                }
+            }
+        }
+    );
+
+    public Writer METHOD_DECLARATION = new Writer(
+        "method_declaration",
+        (c) ->
+        {
+            var group = getGroup(c.element, C.list("methods"));
+            var params = c.element.get("parameters");
+            if (params.isPresent())
+            {
+                List<Set<Integer>> paramIndecies = shuffleParams(params.get());
+                for (var set : paramIndecies)
+                {
+                    els.push("method", group);
+                    createMethod(c, set.size() == params.get().size(), params.get(), set);
+                    els.pop();
+                }
+            }
+            else
+            {
+                els.push("method", group);
+                createMethod(c, true, null, new HashSet<>());
+                els.pop();
+            }
+        }
+    );
+
+    public Writer PARAMETER = new Writer(
+        "parameter",
+        (c) ->
+        {
+            var type = c.element.getElement("type").get();
+
+            String name = c.element.getName();
+            String typeName = type.getName();;
+            int dimension = type.<Integer>getValue("array_dimension").orElse(0);
+            els.get().val("variable", c.element.getFlag("variable"));
+            els.get().name(name);
+
+            Utils.Type t = typeName == null ? null : new Utils.Type(typeName, dimension);
+            Utils.Variable v = null;
+            if (c.element.getFlag("ref"))
+            {
+                this.addHolderClass = true;
+                v = new Utils.VariableHolder(name, t);
+            }
+            else if (c.element.getFlag("out"))
+            {
+                this.addHolderClass = true;
+                v = new Utils.VariableHolder(false, name, t);
+            }
+            else
+            {
+                v = new Utils.Variable(name, t);
+            }
+
+            scope.get().add(v);
+
+            setGroup(type, C.group("type"));
+            v.convertType(c.el(type), this);
+        }
+    );
+
+    public Writer BLOCK = new Writer(
+        "block",
+        (c) ->
+        {
+            els.push("block", getGroup(c.element, C.group("block")));
+            var global = c.element.getFlag("global-scope");
+            scope.push(global);
+
+            var statements = c.element.get("statements");
+            if (statements.isPresent())
+            {
+                for (int i = 0; i < statements.get().size(); i++)
+                {
+                    Element statementEl = statements.get().get(i);
+                    setGroup(statementEl, C.list("statements"));
+                    this.write(c.el(statementEl));
+                }
+            }
+
+            scope.pop();
+            els.pop();
+        }
+    );
+
+    public Writer TYPE = new Writer(
+        "type",
+        (c) ->
+        {
+            els.push("type", getGroup(c.element, C.group("type")));
+
+            var isGeneric = c.element.getFlag("is-generic-type");
+            var isNullable = c.element.getFlag("nullable");
+
+            var name = c.element.getName();
+            if ((isGeneric || isNullable) && GENERIC_TYPES.containsKey(name))
+            {
+                name = GENERIC_TYPES.get(name);
+            }
+            else
+            {
+                name = TYPES.getOrDefault(name, name);
+            }
+
+            els.get().name(name);
+            c.element.<Integer>getValue("array_dimension").ifPresent((dim) -> els.get().val("array_dimension", dim));
+            els.pop();
+        }  
+    );
+
+    public Writer LOCAL_VARIABLE_DECLARATION = new Writer(
+        "local_variable_declaration",
+        (c) ->
+        {
+            var group = getGroup(c.element, C.list("statements"));
+            els.push("local_variable_declaration", group);
+
+            els.get().val("statement", c.element.getFlag("statement"));
+
+            Utils.Type type = null;
+
+            if (c.element.getFlag("implicit"))
+            {
+                els.get().flag("implicit");
+            }
+            else
+            {
+                var typeEl = c.element.getElement("type").get();
+                this.apply(c.el(typeEl), C.group("type"));
+                type = new Utils.Type(typeEl.getName(), typeEl.<Integer>getValue("array_dimension").orElse(0));
+            }
+
+            var dec = c.element.get("declarators").get();
+            for (int i = 0; i < dec.size(); i++)
+            {
+                Element el = dec.get(i);
+                el.val("type-of-variable", type);
+                this.apply(c.el(el), C.list("declarators"));
+            }
+
+            els.pop();
+        }  
+    );
+
+    public Writer LOCAL_VARIABLE_DECLARATOR = new Writer(
+        "local_variable_declarator",
+        (c) ->
+        {
+            var group = getGroup(c.element, C.list("declarators"));
+            els.push("local_variable_declarator", group);
+
+            var type = c.element.<Utils.Type>getValue("type-of-variable").orElse(null);
+            var name = c.element.getName();
+            if (type != null)
+            {
+                scope.get().add(new Utils.Variable(name, type));
+            }
+
+            els.get().name(name);
+            var val = c.element.<Element>getValue("value").get();
+            this.apply(c.el(val), C.group("value"));
+
+            els.pop();
+        }
+    );
+
+    public Writer ASSIGNMENT = new Writer(
+        "assignment",
+        (c) ->
+        {
+            String name = c.element.getName();
+            Utils.Variable v = scope.get().getByName(name);
+            if (v == null)
+            {
+                v = new Utils.Variable(name, null);
+            }
+
+            v.convertAssignment(c, this);
+        }
+    );
+
+    public Writer IF_STATEMENT = new Writer(
+        "if_statement",
+        (c) ->
+        {
+            els.push("if_statement", getGroup(c.element, C.list("statements")));
+
+            var expression = c.element.<Element>getValue("expression").get();
+            setGroup(expression, C.group("expression"));
+            this.write(c.el(expression));
+
+            c.element.<Element>getValue("block").ifPresent((blockIn) ->
+            {
+                setGroup(blockIn, C.group("block"));
+                this.write(c.el(blockIn));
+            });
+
+            els.pop();
+        }
+    );
+
+    public Writer WHILE_STATEMENT = new Writer(
+        "while_statement",
+        (c) ->
+        {
+            els.push("while_statement", getGroup(c.element, C.list("statements")));
+            els.get().val("reverse", c.element.getFlag("reverse"));
+
+            var expression = c.element.<Element>getValue("expression").get();
+            setGroup(expression, C.group("expression"));
+            this.write(c.el(expression));
+
+            c.element.<Element>getValue("block").ifPresent((blockIn) ->
+            {
+                setGroup(blockIn, C.group("block"));
+                this.write(c.el(blockIn));
+            });
+
+            els.pop();
+        }
+    );
+
+    public Writer FOR_STATEMENT = new Writer(
+        "for_statement",
+        (c) ->
+        {
+            els.push("for_statement", getGroup(c.element, C.list("statements")));
+            els.push("for_iterator", C.group("iterator"));
+            
+            c.element.getElement("init").ifPresent((init) ->
+            {
+                this.apply(c.el(init), C.group("initializer"));
+            });
+
+            c.element.getElement("condition").ifPresent((cond) ->
+            {
+                this.apply(c.el(cond), C.group("condition"));
+            });
+
+            c.element.get("iterators").ifPresent((iter) ->
+            {
+                for (int i = 0; i < iter.size(); i++)
+                {
+                    this.apply(c.el(iter.get(i)), C.list("iterators"));
+                }
+            });
+
+            els.pop();
+            c.element.getElement("block").ifPresent((blockIn) ->
+            {
+                this.apply(c.el(blockIn), C.group("block"));
+            });
+            els.pop();
+        }
+    );
+
+    public Writer FOREACH_STATEMENT = new Writer(
+        "foreach_statement",
+        (c) ->
+        {
+            els.push("for_statement", getGroup(c.element, C.list("statements")));
+            els.push("for_collection_iterator", C.group("iterator"));
+
+            var typeEl = c.element.getElement("type").get();
+            this.apply(c.el(typeEl), C.group("type"));
+            var type = new Utils.Type(typeEl.getName(), typeEl.<Integer>getValue("array_dimension").orElse(0));
+            
+            var name = c.element.getName();
+            els.get().name(name);
+            scope.get().add(new Utils.Variable(name, type));
+
+            var collection = c.element.getElement("collection").get();
+            this.apply(c.el(collection), C.group("collection"));
+
+            els.pop();
+
+            c.element.getElement("block").ifPresent((blockIn) ->
+            {
+                this.apply(c.el(blockIn), C.group("block"));
+            });
+            els.pop();
+        }
+    );
+
+    public Writer EXPRESSION = new Writer(
+        "expression",
+        (c) ->
+        {
+            els.push("expression", getGroup(c.element, C.group("expression")));
+
+            var leftValue = c.element.<Element>getValue("left_value").get();
+            this.apply(c.el(leftValue), C.group("left_value"));
+
+            c.element.getElement("right_value").ifPresent((value) ->
+            {
+                els.get().val("operator", c.element.getString("operator").get()); 
+                this.apply(c.el(value), C.group("right_value"));
+            });
+
+            els.pop();
+        }
+    );
+
+    public Writer UNARY_EXPRESSION = new Writer(
+        "unary_expression",
+        (c) ->
+        {
+            els.push("unary_expression", getGroup(c.element, C.group("expression")));
+
+            if (c.element.getFlag("pre"))
+            {
+                els.get().flag("pre");
+            }
+
+            els.get().val("operand", c.element.getString("operand").orElse(null));
+            var val = c.element.getElement("value").get();
+            this.apply(c.el(val), C.group("value"));
+
+            els.pop();
+        }
+    );
+
+    public Writer PARENTHESIZED_EXPRESSION = new Writer(
+        "parenthesized_expression",
+        (c) ->
+        {
+            els.push("parenthesized_expression", getGroup(c.element, C.group("parenthesized_expression")));
+
+            var expr = c.element.getElement("expression").get();
+            this.apply(c.el(expr), C.group("expression"));
+
+            els.pop();
+        }
+    );
+
+    public Writer LITERAL = new Writer(
+        "literal",
+        (c) ->
+        {
+            els.push("literal", getGroup(c.element, C.group("value")));
+            els.get().name(c.element.getName());
+            els.pop();
+        }
+    );
+
+    public Writer VARIABLE = new Writer(
+        "variable",
+        (c) ->
+        {
+            String name = c.element.getName();
+            var variable = scope.get().getByName(name);
+            if (variable == null)
+            {
+                variable = new Utils.Variable(name, null);
+            }
+
+            variable.convertVariable(c, this);
+        }
+    );
+
+    public Writer METHOD_CALL = new Writer(
+        "method_call",
+        (c) ->
+        {
+            var rawName = c.element.getName();
+            String name = null;
+            String type = null;
+            int dotI = rawName.lastIndexOf('.');
+            if (dotI != -1)
+            {
+                name = rawName.substring(dotI+1);
+                type = rawName.substring(0, dotI);
+            }
+            else name = rawName;
+
+
+            els.push("method_call", getGroup(c.element, C.group("value")));
+            els.get().val("is_statement", c.element.getFlag("statement"));
+            if (type != null)
+            {
+                els.push("type", C.group("scope"));
+                els.get().name(type);
+                els.pop();
+            }
+            els.get().name(name);
+            c.element.get("arguments").ifPresent((dec) ->
+            {
+                for (int i = 0; i < dec.size(); i++)
+                {
+                    this.apply(c.el(dec.get(i)), C.list("arguments"));
+                }
+            });
+            els.pop();
+        }
+    );
+
+    public Writer RETURN_STATEMENT = new Writer(
+        "return_statement",
+        (c) ->
+        {
+            els.push("return_statement", getGroup(c.element, C.group("statements")));
+            c.element.getElement("value").ifPresent((val) ->
+            {
+                this.apply(c.el(val), C.group("value"));
+            });
+            els.pop();
+        }
+    );
+
+
+
+    public void apply(Core.Cursor cursor, C.Group group)
+    {
+        setGroup(cursor.element, group);
+        this.write(cursor);
+    }
+
+    public static void setGroup(Element el, C.Group group)
+    {
+        el.val(GROUP_NAME, group.name);
+        el.val(GROUP_LIST, group.list);
+    }
+
+    public static C.Group getGroup(Element el, C.Group defaultValue)
+    {
+        var name = el.<String>getValue(GROUP_NAME).orElse(defaultValue.name);
+        var list = el.getFlag(GROUP_LIST);
+        return new C.Group(name, list);
+    }
+
+    private List<Set<Integer>> shuffleParams(Element.Value params)
+    {
+        Set<Integer> indecies = new HashSet<>();
+        List<Integer> withValue = new ArrayList<>();
+
+        for (int i = 0; i < params.size(); i++)
+        {
+            Element el = params.get(i);
+            if (el.get("value").isPresent())
+            {
+                withValue.add(i);
+            }
+            else
+            {
+                indecies.add(i);
+            }
+        }
+
+        List<Set<Integer>> result = new ArrayList<>();
+        result.add(indecies);
+        for (int i : withValue)
+        {
+            Set<Integer> set = new HashSet<>(indecies);
+            set.add(i);
+            result.add(set);
+            indecies = set;
+        }
+
+        Collections.reverse(result);
+        return result;
+    }
+
+    public void addHolderClass(Cursor c)
+    {
+        if (!this.addHolderClass) return;
+
+        els.add("class", "members");
+            els.get().flag("final");
+            els.get().flag("static");
+            els.get().val("access_modifier", AM.PUBLIC);
+            els.get().name("Holder<T>");
+
+            els.add("global_variable_declaration", "members");
+                els.get().val("access_modifier", AM.PRIVATE);
+                els.push("type", "type");
+                    els.get().name("T");
+                els.pop();
+                els.get().name("value");
+                els.push("literal", "value");
+                    els.get().name("null");
+                els.pop();
+            els.pop();
+
+            els.add("method", "members");
+                els.get().val("access_modifier", AM.PUBLIC);
+                els.get().name("set");
+
+                els.push("block", "block");
+                    els.add("assignment", "statements");
+                        els.get().name("value");
+                        els.get().val("operator", "=");
+                        els.push("literal", "value");
+                            els.get().name("v");
+                        els.pop();
+                    els.pop();
+
+                    els.add("return_statement", "statements");
+                        els.push("literal", "value");
+                            els.get().name("v");
+                        els.pop();
+                    els.pop();
+
+                els.pop();
+
+                els.push("type", "return_type");
+                    els.get().name("T");
+                els.pop();
+
+                els.add("parameter", "parameters");
+                    els.get().name("v");
+                    els.push("type", "type");
+                        els.get().name("T");
+                    els.pop();
+                els.pop();
+
+            els.pop();
+
+            els.add("method", "members");
+                els.get().val("access_modifier", AM.PUBLIC);
+                els.get().name("get");
+                els.push("type", "return_type");
+                    els.get().name("T");
+                els.pop();
+
+                els.push("block", "block");
+                    els.add("return_statement", "statements");
+                        els.push("literal", "value");
+                            els.get().name("v");
+                        els.pop();
+                    els.pop();
+                els.pop();
+
+            els.pop();
+
+        els.pop();
+    }
+
+    private void createMethod(Cursor c, boolean main, Element.Value params, Set<Integer> paramIndecies)
+    {
+        String name = c.element.getName();
+        els.get().name(name);
+
+        var type = c.element.<Element>getValue("type");
+        var block = c.element.<Element>getValue("block");
+
+        if (params != null)
+        {
+            for (int i : paramIndecies)
+            {
+                Element paramEl = params.get(i);
+                els.add("parameter", "parameters");
+                this.write(c.el(paramEl));
+                els.pop();
+            }
+        }
+
+        type.ifPresent((typeIn) ->
+        {
+            this.apply(c.el(typeIn), C.group("return_type"));
+        });
+
+        if (main)
+        {
+            block.ifPresent((blockIn) ->
+            {
+                setGroup(blockIn, C.group("block"));
+                this.write(c.el(blockIn));
+            });
+        }
+        else
+        {
+            els.push("block", "block");
+            els.add("method_call", "statements");
+            els.get().flag("is_statement");
+            els.get().name(name);
+            for (int i = 0; i < params.size(); i++)
+            {
+                Element param = params.get(i);
+                if (paramIndecies.contains(i))
+                {
+                    els.add("literal", "arguments");
+                    els.get().name(param.getName());
+                    els.pop();
+                }
+                else
+                {
+                    param.<Element>getValue("value").ifPresent((val) ->
+                    {
+                        setGroup(val, C.list("arguments"));
+                        this.write(c.el(val));
+                    });
+                }
+            }
+            els.pop();
+            els.pop();
+        }
+
+        var mods = c.element.get("modifiers");
+        if (mods.isPresent())
+        {
+            boolean isFinal = true;
+
+            for (int i = 0; i < mods.get().size(); i++)
+            {
+                var mod = mods.get().<String>get(i);
+                switch (mod)
+                {
+                    case "public": els.get().val("access_modifier", AM.PUBLIC); break;
+                    case "private": els.get().val("access_modifier", AM.PRIVATE); break;
+                    case "protected": els.get().val("access_modifier", AM.PROTECTED); break;
+
+                    case "static": 
+                        els.get().flag("static"); 
+                        isFinal = false; 
+                        break;
+
+                    case "virtual": 
+                        els.get().val("final", false); 
+                        isFinal = false; 
+                        break;
+
+                    case "override":
+                        isFinal = false;
+                        els.add("annotation", "annotations");
+                        els.push("type");
+                        els.get().name("Override");
+                        els.pop();
+                        els.pop();
+                        break;
+                }
+            }
+
+            els.get().val("final", isFinal);
+        }
+    }
+}

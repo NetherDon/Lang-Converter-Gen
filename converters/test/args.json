@@ -1,0 +1,8 @@
+{
+    "package": "test",
+    "jarName": "name",
+    "saveTempFiles": false,
+    "grammar": "./Calc0_F.java.atg",
+    "frames": {
+    }
+}

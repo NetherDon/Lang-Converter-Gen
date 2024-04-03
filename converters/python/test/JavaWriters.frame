@@ -1,0 +1,8 @@
+import java.util.ArrayList;
+
+import static -----> package.Core.*;
+
+public class JavaWriters extends Writers
+{
+
+}

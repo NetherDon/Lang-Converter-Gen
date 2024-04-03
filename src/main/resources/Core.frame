@@ -1,0 +1,577 @@
+import java.io.StringWriter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.Collection;
+import java.util.Collections;
+
+public class Core 
+{
+    public static final int TAB_SIZE = 4;
+
+    public static final class Case
+    {
+        public static final Case SNAKE = Case.byDelemiter("_");
+        public static final Case KEBAB = Case.byDelemiter("-");
+        public static final Case FLAT = Case.byDelemiter("");
+
+        public static final Case CAMEL = new Case((name) ->
+        {
+            Token[] tokens = splitName(name);
+            String result = "";
+            boolean first = true;
+            for (Token token : tokens)
+            {
+                if (first)
+                {
+                    result += token.value.toLowerCase();
+                    first = false;
+                    continue;
+                }
+
+                if (token.isAbbreviation())
+                {
+                    result += token.value.toUpperCase();
+                    continue;
+                }
+                
+                result += Character.toUpperCase(token.value.charAt(0)) + token.value.substring(1).toLowerCase();
+            }
+            return result;
+        });
+
+        public static final Case PASCAL = new Case((name) ->
+        {
+            Token[] tokens = splitName(name);
+            String result = "";
+            for (Token token : tokens)
+            {
+                if (token.isAbbreviation())
+                {
+                    result += token.value.toUpperCase();
+                    continue;
+                }
+
+                result += Character.toUpperCase(token.value.charAt(0)) + token.value.substring(1).toLowerCase();
+            }
+            return result;
+        });
+
+        private final Function<String, String> rule;
+
+        public Case(Function<String, String> rule)
+        {
+            this.rule = rule;
+        }
+
+        public String convert(String name)
+        {
+            if (name == "")
+            {
+                return "";
+            }
+
+            return this.rule.apply(name);
+        }
+
+        private static String saveString(String str, boolean abbreviation, List<Token> list)
+        {
+            if (str != "")
+            {
+                list.add(new Token(str, abbreviation));
+                return "";
+            }
+
+            return str;
+        }
+
+        public static Token[] splitName(String name)
+        {
+            List<Token> tokens = new ArrayList<>();
+            String lastString = "";
+            int uppercaseStreak = 0;
+            for (int i = 0; i < name.length(); i++)
+            {
+                char c = name.charAt(i);
+                if (Character.isUpperCase(c))
+                {
+                    if (uppercaseStreak == 0)
+                    {
+                        lastString = saveString(lastString, false, tokens);
+                    }  
+
+                    lastString += Character.toLowerCase(c);
+                    uppercaseStreak++;
+                }
+                else
+                {
+                    if (uppercaseStreak > 1)
+                    {
+                        saveString(lastString.substring(0, lastString.length()-1), true, tokens);
+                        lastString = lastString.substring(lastString.length()-1);
+                    }
+
+                    uppercaseStreak = 0;
+                    if (c == '_' || c == '-')
+                    {
+                        lastString = saveString(lastString, false, tokens);
+                    }
+                    else if (Character.isUpperCase(c))
+                    {
+                        lastString = saveString(lastString, false, tokens);
+                        lastString += Character.toLowerCase(c);
+                    }
+                    else
+                    {
+                        lastString += c;
+                    }
+                }
+            }
+
+            saveString(lastString, uppercaseStreak > 1, tokens);
+            return tokens.toArray(new Token[0]);
+        }
+
+        public static Case byDelemiter(String delimiter)
+        {
+            return new Case((name) ->
+            {
+                Token[] tokens = splitName(name);
+                return String.join(delimiter, Arrays.stream(tokens).map((t) -> t.value.toLowerCase()).toList());
+            });
+        }
+
+        private static class Token
+        {
+            public final String value;
+            private final boolean abbreviation;
+
+            public Token(String value, boolean abbreviation)
+            {
+                this.value = value;
+                this.abbreviation = abbreviation;
+            }
+
+            public boolean isAbbreviation()
+            {
+                return this.abbreviation;
+            }
+        }
+    }
+
+    public static final class Element
+    {
+        private Element parent = null;
+        private String name = "";
+        private String type = "";
+        private final Map<String, Value> values = new HashMap<>();
+
+        public Element() {}
+        
+        public Element(String type) 
+        {
+            this.type(type);
+        }
+
+        private void bind(Object obj)
+        {
+            if (obj instanceof Element element)
+            {
+                element.parent = this;
+            }
+        }
+
+        public Element parent()
+        {
+            return this.parent;
+        }
+
+        public Element val(String key, Object value)
+        {
+            this.bind(value);
+            this.values.put(key, new Value(value, false));
+            return this;
+        }
+
+        public Element flag(String key)
+        {
+            return this.val(key, true);
+        }
+
+        @SuppressWarnings("unchecked")
+        public Element add(String key, Object... values)
+        {
+            Value v = this.values.getOrDefault(key, null);
+            if (v == null || !v.isList)
+            {
+                v = new Value(new ArrayList<Object>(), true);
+                this.values.put(key, v);
+            }
+            
+            for (Object value : values)
+            {
+                this.bind(value);
+                ((List<Object>)v.get()).add(value);
+            }
+
+            return this;
+        }
+
+        public Element name(String name)
+        {
+            this.name = name == null ? "" : name;
+            return this;
+        }
+
+        public Element type(String type)
+        {
+            this.type = type == null ? ""  : type;
+            return this;
+        }
+
+        public boolean is(String type)
+        {
+            return this.type.equals(type);
+        }
+
+        public Optional<Value> get(String key)
+        {
+            Value v = this.values.getOrDefault(key, null);
+            return v == null ? Optional.empty() : Optional.of(v);
+        }
+
+        public <T> Optional<T> getValue(String key)
+        {
+            return get(key).map((v) -> v.<T>get());
+        }
+
+        public Optional<Element> getElement(String key)
+        {
+            return this.<Element>getValue(key);
+        }
+
+        public Optional<String> getString(String key)
+        {
+            return this.<String>getValue(key);
+        }
+
+        public boolean getFlag(String key)
+        {
+            return this.<Boolean>getValue(key).orElse(false);
+        }
+
+        public String getName()
+        {
+            return this.name;
+        }
+
+        public String getType()
+        {
+            return this.type;
+        }
+
+        @SuppressWarnings("unchecked")
+        public static class Value
+        {
+            private final Object value;
+            public final boolean isList;
+
+            public Value(Object value, boolean isList)
+            {
+                this.value = value;
+                this.isList = isList;
+            }
+
+            public <T> T get()
+            {
+                return (T)this.value;
+            }
+
+            public <T> T get(int i)
+            {
+                return (T)((List<Object>)this.value).get(i);
+            }
+
+            public int size()
+            {
+                return ((List<Object>)this.value).size();
+            }
+        }
+    }
+
+    public static final class Writer implements Comparable<Writer>
+    {
+        public final int priority;
+        public final Consumer<Cursor> behaviour;
+        public final Predicate<Element> condition;
+        
+        public Writer(int priority, Predicate<Element> condition, Consumer<Cursor> behaviour)
+        {
+            this.priority = priority;
+            this.behaviour = behaviour;
+            this.condition = condition;
+        }
+
+        public Writer(int priority, String type, Consumer<Cursor> behaviour)
+        {
+            this(priority, Writers.isType(type), behaviour);
+        }
+
+        public Writer(Predicate<Element> condition, Consumer<Cursor> behaviour)
+        {
+            this(0, condition, behaviour);
+        }
+
+        public Writer(String type, Consumer<Cursor> behaviour)
+        {
+            this(0, type, behaviour);
+        }
+
+        @Override
+        public int compareTo(Writer o) 
+        {
+            return o.priority - this.priority;
+        }
+    }
+
+    public static class Cursor
+    {
+        public final Element element;
+        public final StringWriter writer;
+        public final int depth;
+        public Mode mode;
+
+        public Cursor(Element element)
+        {
+            this(element, new StringWriter(), 0, Mode.DEFAULT);
+        }
+
+        private Cursor(Element element, StringWriter writer, int depth, Mode mode)
+        {
+            this.element = element;
+            this.writer = writer;
+            this.depth = depth;
+            this.mode = mode;
+        }
+
+        public Cursor copy()
+        {
+            return new Cursor(this.element, this.writer, this.depth, this.mode);
+        }
+
+        public Cursor el(Element element)
+        {
+            return new Cursor(element, this.writer, this.depth, this.mode);
+        }
+
+        public Cursor depth(int depth)
+        {
+            return new Cursor(this.element, this.writer, depth, this.mode);
+        }
+
+        public Cursor shift(int steps)
+        {
+            return this.depth(this.depth + steps);
+        }
+
+        public Cursor inline()
+        {
+            return new Cursor(this.element, this.writer, this.depth, Mode.INLINE);
+        }
+
+        public Cursor noBr()
+        {
+            if (this.mode == Mode.INLINE)
+            {
+                return this.inline();
+            }
+            else
+            {
+                return new Cursor(this.element, this.writer, this.depth, Mode.APPEND);
+            }
+        }
+
+        public Cursor writer(StringWriter writer)
+        {
+            return new Cursor(this.element, writer, this.depth, this.mode);
+        }
+
+        public Cursor next()
+        {
+            return this.shift(1);
+        }
+
+        public Cursor append(String text)
+        {
+            if (this.mode == Mode.INLINE) text = text.replace("\n", " ");
+            else if (this.mode == Mode.APPEND) this.mode = Mode.DEFAULT;
+            this.writer.append(text);
+            return this;
+        }
+
+        public Cursor tab()
+        {
+            if (this.mode == Mode.APPEND)
+            {
+                this.mode = Mode.DEFAULT;
+                return this;
+            }
+
+            return this.append(" ".repeat(TAB_SIZE * this.depth));
+        }
+
+        public Cursor line(String text)
+        {
+            if (this.mode == Mode.APPEND)
+            {
+                this.mode = Mode.DEFAULT;
+            }
+            else if (this.mode == Mode.DEFAULT)
+            {
+                this.tab();
+            }
+            return this.append(text).br();
+        }
+
+        public Cursor lines(Collection<String> text)
+        {
+            for (String str : text)
+            {
+                this.line(str);
+            }
+
+            return this;
+        }
+
+        public Cursor list(String delemiter, Collection<String> text)
+        {   
+            return this.append(String.join(delemiter, text));
+        }
+
+        public Cursor list(Collection<String> text)
+        {
+            return this.list(" ", text);
+        }
+
+        public Cursor lineList(Collection<String> text)
+        {
+            return this.tab().list(text).br();
+        }
+
+        public Cursor nested(Collection<String> text)
+        {
+            return this.list("\n", text);
+        }
+
+        public Cursor space()
+        {
+            return this.append(" ");
+        }
+
+        public Cursor br()
+        {
+            return this.append("\n");
+        }
+
+        public static enum Mode
+        {
+            DEFAULT,
+            APPEND,
+            INLINE;
+        }
+    }
+
+    public static abstract class Writers
+    {
+        private final List<Writer> writers = new ArrayList<>();
+        private boolean loaded = false;
+
+        public void load()
+        {
+            if (this.loaded)
+            {
+                return;
+            }
+
+            this.loaded = true;
+            for (Field field : this.getClass().getFields())
+            {
+
+                if (field.getType() == Writer.class && !Modifier.isStatic(field.getModifiers()))
+                {
+                    try
+                    {
+                        this.writers.add((Writer)field.get(this));
+                    }
+                    catch (IllegalAccessException exception) {}
+                }
+
+                Collections.sort(this.writers);
+            }
+        }
+
+        public final void write(Cursor cursor)
+        {
+            for (Writer writer : this.writers)
+            {
+                if (writer.condition.test(cursor.element))
+                {
+                    writer.behaviour.accept(cursor);
+                    return;
+                }
+            }
+
+            cursor.line("/* Unknown element \"" + cursor.element.getType() + "\" */");
+        }
+
+        protected static Predicate<Element> isType(String type)
+        {
+            return (el) -> el.is(type);
+        }
+
+        protected final String writeElement(Cursor cursor)
+        {
+            var writer = new StringWriter();
+            this.write(cursor.writer(writer));
+            return writer.toString();
+        }
+
+        protected final Optional<String> writeElement(String key, Cursor cursor)
+        {
+            Optional<Element> el = cursor.element.<Element>getValue(key);
+            if (el.isPresent())
+            {
+                return Optional.of(this.writeElement(cursor.el(el.get())));
+            }
+
+            return Optional.empty();
+        }
+
+        protected final List<String> writeNested(String key, Cursor cursor, List<String> elements)
+        {
+            cursor.element.get(key).ifPresent((childs) ->
+            {
+                for (int i = 0; i < childs.size(); i++)
+                {
+                    Element child = childs.<Element>get(i);
+                    elements.add(writeElement(cursor.el(child)));
+                }
+            });
+
+            return elements;
+        }
+
+        protected final List<String> writeNested(String key, Cursor cursor)
+        {
+            return this.writeNested(key, cursor, new ArrayList<>());
+        }
+    }
+}

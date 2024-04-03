@@ -1,0 +1,86 @@
+import java.util.Arrays;
+
+import static -----> package.JavaWriters.*;
+import static -----> package.Core.*;
+
+public class C
+{
+    public static Elements els = new Elements();
+    public static boolean addHolderClass = false;
+
+    public static void end()
+    {
+        Converters conv = new Converters();
+        Cursor c = new Cursor(els.file);
+        conv.load();
+        conv.write(c);
+        //conv.addHolderClass(c);
+    }
+
+    public static Group group(String name)
+    {
+        return new Group(name, false);
+    }
+
+    public static Group list(String name)
+    {
+        return new Group(name, true);
+    }
+
+    public static boolean isMethodCall(Parser parser)
+    {
+        parser.scanner.ResetPeek();
+
+        Token t2 = parser.la;
+        if (t2.kind != parser._ident)
+        {
+            return false;
+        }
+
+        while (true)
+        {
+            t2 = parser.scanner.Peek();
+            if (".".equals(t2.val))
+            {
+                t2 = parser.scanner.Peek();
+                if (t2.kind != parser._ident)
+                {
+                    return false;
+                }
+                
+                continue;
+            }
+
+            if ("(".equals(t2.val))
+            {
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    public static boolean isAssignment(Parser parser)
+    {
+        parser.scanner.ResetPeek();
+        return parser.la.kind == parser._ident && isAssigmentOperator(parser.scanner.Peek().val);
+    }
+
+    private static boolean isAssigmentOperator(String val)
+    {
+        final String[] operators = new String[] { "=", "-=", "+=", "/=", "*=", "%=", "&=", "|="  };
+        return Arrays.stream(operators).anyMatch(val::equals);
+    }
+
+    public static class Group
+    {
+        public final String name;
+        public final boolean list;
+
+        public Group(String name, boolean list)
+        {
+            this.name = name;
+            this.list = list;
+        }
+    }
+}

@@ -1,0 +1,279 @@
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Optional;
+
+import static -----> package.Core.*;
+import static -----> package.Converters.*;
+
+public class Utils
+{
+    public static class Scopes
+    {
+        private Scope cur = new Scope(true);
+
+        public Scope get()
+        {
+            return this.cur;
+        }
+
+        public void push()
+        {
+            this.push(false);
+        }
+
+        public void push(boolean global)
+        {
+            this.cur = new Scope(this.cur, global);
+        }
+
+        public void pop()
+        {
+            this.cur = this.cur.parent;
+        }
+    }
+
+    public static class Scope
+    {
+        public final Scope parent;
+        private final List<Variable> variables = new ArrayList<>();
+        private final boolean global;
+
+        public Scope(Scope parent, boolean global) { this.parent = parent; this.global = global; }
+        public Scope(boolean global) { this(null, global); }
+
+        public boolean has(Variable variable)
+        {
+            return this.variables.contains(variable) && (this.parent == null || this.parent.has(variable));
+        }
+
+        public boolean has(String name, Type type)
+        {
+            return this.has(new Variable(name, type));
+        }
+
+        public Variable getByName(String name)
+        {
+            return this.variables.stream().filter((v) -> v.name.equals(name)).findFirst().orElse(this.parent == null ? null : this.parent.getByName(name));
+        }
+
+        public Scope getGlobal()
+        {
+            return this.global ? this : (this.parent == null ? new Scope(true) : this.parent.getGlobal());
+        }
+
+        public void add(Variable v)
+        {
+            if (!this.has(v))
+            {
+                this.variables.add(0, v);
+            }
+        }
+    }
+
+    public static class VariableHolder extends Variable
+    {
+        public final boolean isRef;
+
+        public VariableHolder(boolean ref, String name, Type type)
+        {
+            super(name, type);
+            this.isRef = ref;
+        }
+
+        public VariableHolder(String name, Type type)
+        {
+            this(true, name, type);
+        }
+
+        @Override
+        public void convertAssignment(Cursor c, Converters conv)
+        {
+            var group = getGroup(c.element, C.list("statements"));
+            els.push("method_call", group);
+            els.get().flag("is_statement");
+
+            els.get().name(c.element.getName() + ".set");
+
+            var value = c.element.getElement("value").get();
+            var op = c.element.getString("operator").get();
+            if (op.equals("="))
+            {
+                conv.apply(c.el(value), C.list("arguments"));
+            }
+            else
+            {
+                els.push("expression", C.list("arguments"));
+
+                String exprOp = switch (op)
+                {
+                    case "+=" -> "+";
+                    case "-=" -> "-";
+                    case "/=" -> "/";
+                    case "*=" -> "*";
+                    case "%=" -> "%";
+                    case "&=" -> "&";
+                    case "|=" -> "|";
+                    default -> "-?-";
+                };
+                
+                els.get().val("operator", exprOp);
+
+                els.push("method_call", C.group("left_value"));
+                els.get().name(c.element.getName() + ".get");
+                els.pop();
+
+                els.push("parenthesized_expression", C.group("right_value"));
+                els.get().flag("implicitly");
+                conv.apply(c.el(value), C.group("expression"));
+                els.pop();
+
+                els.pop();
+            }
+
+            els.pop();
+        }
+
+        @Override
+        public void convertType(Cursor c, Converters conv)
+        {
+            els.push("type", getGroup(c.element, C.group("type")));
+            els.get().name("Holder");
+            c.element.flag("is-generic-type");
+            conv.apply(c, C.list("generic"));
+            c.element.val("is-generic-type", null);
+            els.pop();
+        }
+
+        @Override
+        public void convertVariable(Cursor c, Converters conv) 
+        {
+            els.push("complex", getGroup(c.element, C.group("value")));
+
+            els.push("method_call", C.list("childs"));
+            els.get().name(c.element.getName() + ".get");
+            els.pop();
+
+            this.applyIndices(c, conv, C.list("childs"));
+
+            els.pop();
+        }
+    }
+
+    public static class Variable
+    {
+        public final Type type;
+        public final String name;
+
+        public Variable(String name, Type type)
+        {
+            this.name = name;
+            this.type = type;
+        }
+
+        public boolean equals(Object o)
+        {
+            if (o == this) return true;
+            if (o instanceof Variable v)
+            {
+                return this.name.equals(v.name) && (this.type == null || this.type.equals(v.type));
+            }
+            return false;
+        }
+
+        public void convertAssignment(Cursor c, Converters conv) 
+        {
+            var group = getGroup(c.element, C.list("statements"));
+            els.push("assignment", group);
+
+            els.get().name(c.element.getName());
+            els.get().val("operator", c.element.getString("operator").get());
+            var value = c.element.getElement("value").get();
+            conv.apply(c.el(value), C.group("value"));
+
+            els.pop();
+        }
+
+        public void convertVariable(Cursor c, Converters conv) 
+        {
+            els.push("variable", getGroup(c.element, C.group("value")));
+            els.get().name(c.element.getName());
+            this.applyIndices(c, conv, C.group("indices"));
+            els.pop();
+        }
+
+        public void convertType(Cursor c, Converters conv)
+        {
+            conv.apply(c, C.group("type"));
+        }
+
+        protected void applyIndices(Cursor c, Converters conv, C.Group group)
+        {
+            c.element.get("indices").ifPresent((idx) ->
+            {
+                els.push("array_indices", group);
+                for (int i = 0; i < idx.size(); i++)
+                {
+                    conv.apply(c.el(idx.get(i)), C.list("expressions"));
+                }
+                els.pop();
+            });
+        }
+    }
+    
+    public static class Type
+    {
+        public final String name;
+        public final String path;
+        public int dimension;
+
+        public Type(String name, String path, int dimension)
+        {
+            this.name = name;
+            this.path = path;
+            this.dimension = dimension;
+        }
+
+        public Type(String name, int dimension)
+        {
+            int i = name.lastIndexOf('.');
+            if (i != -1)
+            {
+                this.name = name.substring(i+1);
+                this.path = name.substring(0, i);
+            }
+            else
+            {
+                this.name = name;
+                this.path = "";
+            }
+            this.dimension = dimension;
+        }
+
+        public Type(String name, String path)
+        {
+            this(name, path, 0);
+        }
+        
+        public Type(String name)
+        {
+            this(name, 0);
+        }
+
+        public boolean isArray()
+        {
+            return this.dimension > 0;
+        }
+
+        public boolean equals(Object o)
+        {
+            if (o == this) return true;
+            if (o instanceof Type t)
+            {
+                return this.name.equals(t.name) && this.path.equals(t.path);
+            }
+            return false;
+        }
+    }
+}

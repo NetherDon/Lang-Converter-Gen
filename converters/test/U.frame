@@ -1,0 +1,16 @@
+public class U 
+{
+    public static void print(String text)
+    {
+        try
+        {
+            Main.OUT.write(text.getBytes());
+        }
+        catch(java.io.IOException e) {}
+    }
+
+    public static void println(String text)
+    {
+        print(text + '\n');
+    }
+}

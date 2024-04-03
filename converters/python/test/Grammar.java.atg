@@ -1,0 +1,80 @@
+COMPILER PYTHON_TEST
+//#domain
+
+public static class A
+{
+  public static boolean test(Parser parser)
+  {
+    Token t2 = parser.scanner.Peek();
+    //System.out.println("K: " + t2.val + "  |  " + t2.kind);
+    return t2.kind == 6;
+  }
+}
+
+//#enddomain
+CHARACTERS  
+  letter = 'A'..'Z'+'a'..'z'.
+  digit = '0'..'9'.
+  underscore = '_'.
+  cr  = '\r'.  lf  = '\n'.  tab = '\t'.
+  eol = '\r'.
+  null = '\u0000'.
+
+TOKENS
+  newline = lf.
+  dedent = null null.
+  indent = null null null.
+  ident  = (underscore | letter) {letter | digit | underscore}.
+  number = digit {digit}.
+
+COMMENTS FROM "/*" TO "*/" NESTED
+COMMENTS FROM "//" TO eol 
+
+IGNORE cr + tab
+PRODUCTIONS
+PYTHON_TEST =
+  Statements
+  { Statements }
+.
+
+Assigment =
+  ident "=" number
+  [ EOF (. return; .) ] 
+  newline
+.
+
+Statements =
+  Assigment | Function | Class
+.
+
+Block =
+  newline
+  indent
+  Statements
+  { Statements }
+  [ EOF (. return; .) ] 
+  dedent
+.
+
+Function = 
+  "def" ident "(" ")" ":"
+  Block
+.
+
+Class =
+  "class" ident ":"
+  Block
+.
+
+END PYTHON_TEST.
+
+
+
+
+
+
+
+
+
+
+

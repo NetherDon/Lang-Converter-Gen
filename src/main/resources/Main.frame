@@ -1,0 +1,77 @@
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.StringWriter;
+import java.util.List;
+
+public class Main 
+{
+    public static final Core.Element FILE = new Core.Element("file");
+    private static final Core.Writers WRITERS = new -----> writers();
+
+    static
+    {
+        WRITERS.load();
+    }
+
+    public static void main(String[] args)
+    {
+        Scanner scanner = new Scanner(args[0]);
+        Parser parser = new Parser(scanner);
+        parser.Parse();
+
+        var errors = parser.errors;
+        int errorCount = errors.errors.size();
+        int warningCount = errors.warnings.size();
+
+        if (errorCount == 0)
+        {
+            System.out.println(createResult());
+            System.out.println();
+        }
+
+        if (warningCount > 0)
+        {
+            System.out.println("> Warnings " + warningCount + " <");
+            System.out.println(String.join("\n", toStringList(errors.warnings)));
+        }
+        
+        if (errorCount > 0)
+        {
+            System.out.println("> Errors " + errorCount + " <");
+            System.out.println(String.join("\n", toStringList(errors.errors)));
+        }
+    }
+
+    public static String parse(InputStream input)
+    {
+        Scanner scanner = new Scanner(input);
+        Parser parser = new Parser(scanner);
+        parser.Parse();
+
+        String jsonErrorsArray = String.join(", ", toJsonList(parser.errors.errors));
+        String jsonWarningsArray = String.join(", ", toJsonList(parser.errors.warnings));
+        String text = createResult();
+
+        return String.format(
+            "{\"text\": \"%s\", \"errors\": [%s], \"warnings\": [%s]}",
+            Parser.Message.replaceEscapeChars(text), jsonErrorsArray, jsonWarningsArray
+        );
+    }
+
+    private static String createResult()
+    {
+        Core.Cursor cursor = new Core.Cursor(FILE);
+        WRITERS.write(cursor);
+        return cursor.writer.toString();
+    }
+
+    private static List<String> toStringList(List<Parser.Message> messages)
+    {
+        return messages.stream().map((msg) -> msg.toString()).toList();
+    }
+
+    private static List<String> toJsonList(List<Parser.Message> messages)
+    {
+        return messages.stream().map((msg) -> msg.toJsonString()).toList();
+    }
+}

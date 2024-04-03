@@ -1,0 +1,88 @@
+import static -----> package.Core.*;
+
+public class Elements
+{
+    public final Element file;
+    private Element cur;
+
+    public Elements(Element file)
+    {
+        this.file = file;
+        this.cur = file;
+    }
+
+    public Elements()
+    {
+        this(new Element("file"));
+    }
+
+    public Element get()
+    {
+        return this.cur;
+    }
+
+    public void set(Element el)
+    {
+        this.cur = el;
+    }
+
+    public Element push(String type, String childName, boolean list)
+    {
+        Element newEl = new Element(type);
+        if (list) this.cur.add(childName, newEl);
+        else this.cur.val(childName, newEl);
+        this.cur = newEl;
+        return this.cur;
+    }
+    
+    public Element push(String type, String childName)
+    {
+        return push(type, childName, false);
+    }
+
+    public Element push(String type, boolean list)
+    {
+        return push(type, type, list);
+    }
+
+    public Element push(String type)
+    {
+        return push(type, type);
+    }
+
+    public Element add(String type, String childName)
+    {
+        return push(type, childName, true);
+    }
+
+    public Element add(String type)
+    {
+        return add(type, type);
+    }
+
+    public Element pop(C.Group group)
+    {
+        return pop(group != null);
+    }
+
+    public Element pop(boolean b)
+    {
+        return b ? this.cur = this.cur.parent() : null;
+    }
+
+    public Element pop()
+    {
+        return pop(true);
+    }
+
+    public Element push(String type, C.Group group)
+    {
+        if (group == null) return null;
+        return push(type, group.name, group.list);
+    }
+
+    public Element push(C.Group group)
+    {
+        return push("", group);
+    }
+}

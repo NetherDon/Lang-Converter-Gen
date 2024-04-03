@@ -1,0 +1,13 @@
+{
+    "package": "pythontest",
+    "jarName": "pythontest",
+    "saveTempFiles": true,
+    "grammar": "./Grammar.java.atg",
+    "writers": "JavaWriters",
+    "frames": {
+        "scanner": "../Scanner.frame",
+        "other": [
+            "./JavaWriters.frame"
+        ]
+    }
+}

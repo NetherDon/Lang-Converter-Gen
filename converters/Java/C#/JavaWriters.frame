@@ -1,0 +1,488 @@
+import java.util.ArrayList;
+import java.util.Collections;
+
+import static -----> package.Core.*;
+
+public class JavaWriters extends Writers
+{
+    public Writer FILE = new Writer(
+        "file",
+        (cursor) ->
+        {
+            var classes = new ArrayList<String>();
+            this.writeElement("main_class", cursor).ifPresent(classes::add);
+
+            this.writeNested("subclasses", cursor, classes);
+
+            cursor.list("\n", classes);
+        }
+    );
+
+    public Writer LOCAL_VARIABLE_DECLARATION = new Writer(
+        "local_variable_declaration",
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            var implicit = cursor.element.getFlag("implicit");
+            var isStatement = cursor.element.getFlag("statement");
+            
+            if (isStatement)
+            {
+                cursor.tab();
+            }
+
+            if (implicit)
+            {
+                cursor.append("var");
+            }
+            else
+            {
+                cursor.append(writeElement("type", cursor).orElse("Object"));
+            }
+            
+            cursor.space().list(", ", writeNested("declarators", cursor.inline()));
+            if (isStatement)
+            {
+                cursor.append(";").br();
+            }
+        }
+    );
+
+    public Writer LOCAL_VARIABLE_DECLARATOR = new Writer(
+        "local_variable_declarator",
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            fl.add(Case.CAMEL.convert(cursor.element.getName()));
+
+            var value = cursor.element.<Element>getValue("value");
+            value.ifPresent((valueIn) ->
+            {
+                fl.add("=");
+                fl.add(this.writeElement(cursor.el(valueIn)));
+                //fl.add(valueIn);
+            });
+
+            cursor.list(fl);
+        }
+    );
+
+    public Writer ASSIGNMENT = new Writer(
+        "assignment",
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            fl.add(Case.CAMEL.convert(cursor.element.getName()));
+
+            var value = cursor.element.<Element>getValue("value").get();
+            fl.add(cursor.element.getString("operator").get());
+            fl.add(this.writeElement(cursor.el(value)));
+
+            cursor.tab().list(fl).append(";").br();
+        }
+    );
+
+    public Writer EXPRESSION = new Writer(
+        "expression",
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            fl.add(this.writeElement("left_value", cursor).get());
+            cursor.element.getElement("right_value").ifPresent((val) ->
+            {
+                fl.add(cursor.element.getString("operator").orElse("+"));
+                fl.add(this.writeElement(cursor.el(val)));
+            });
+
+            cursor.list(fl);
+        }
+    );
+
+    public Writer UNARY_EXPRESSION = new Writer(
+        "unary_expression",
+        (c) ->
+        {
+            var valText = this.writeElement("value", c).get();
+            var operand = c.element.getString("operand").orElse("");
+            var pre = c.element.getFlag("pre");
+
+            var fl = new ArrayList<String>();
+            fl.add(valText);
+            fl.add(operand);
+
+            if (pre) Collections.reverse(fl);
+
+            c.list("", fl);
+        }
+    );
+
+    public Writer PARENTHESIZED_EXPRESSION = new Writer(
+        "parenthesized_expression",
+        (cursor) ->
+        {
+            var expr = cursor.element.getElement("expression").get();
+
+            boolean flag = !cursor.element.getFlag("implicitly");
+            if (!flag)
+            {
+                var cur = expr;
+                while (cur != null && !flag)
+                {
+                    flag |= cur.getElement("right_value").isPresent();
+                    cur = cur.getElement("left_value").orElse(null);
+                }
+            }
+            
+            String exprText = this.writeElement(cursor.el(expr));
+            if (flag)
+            {
+                cursor.append("(").append(exprText).append(")");
+            }
+            else
+            {
+                cursor.append(exprText);
+            }
+        }
+    );
+
+    public Writer METHOD_STATEMENT = new Writer(
+        "method_statement",
+        (cursor) ->
+        {
+            cursor.tab().append(this.writeElement("caller", cursor).get()).append(";").br();
+        }
+    );
+
+    public Writer METHOD_CALL = new Writer(
+        "method_call",
+        (cursor) ->
+        {
+            var isStatement = cursor.element.getFlag("is_statement");
+            if (isStatement)
+            {
+                cursor.tab();
+            }
+
+            cursor.element.<Element>getValue("scope").ifPresent((scope) ->
+            {
+                this.write(cursor.el(scope));
+                cursor.append(".");
+            });
+
+            cursor.append(cursor.element.getName())
+                .append("(")
+                .list(", ", this.writeNested("arguments", cursor))
+                .append(")");
+
+            if (isStatement)
+            {
+                cursor.append(";").br();
+            }
+        }
+    );
+
+    public Writer LITERAL = new Writer(
+        "literal",
+        (cursor) ->
+        {
+            cursor.append(cursor.element.getName());
+        }
+    );
+
+    public Writer VARIABLE = new Writer(
+        "variable",
+        (cursor) ->
+        {
+            cursor.append(cursor.element.getName())
+                .append(this.writeElement("indices", cursor).orElse(""));
+        }
+    );
+
+    public Writer COMPLEX = new Writer(
+        "complex",
+        (cursor) ->
+        {
+            cursor.list("", this.writeNested("childs", cursor));
+        }
+    );
+
+    public Writer ARRAY_INDICES = new Writer(
+        "array_indices",
+        (cursor) ->
+        {
+            var exprs = this.writeNested("expressions", cursor);
+            cursor.append("[").list("][", exprs).append("]");
+        }
+    );
+
+    public Writer TYPE = new Writer(
+        "type",
+        (cursor) ->
+        {
+            var pascalCase = cursor.element.getFlag("pascal_case");
+            String name = cursor.element.getName();
+            if (pascalCase)
+            {
+                name = Case.PASCAL.convert(name);
+            }
+            cursor.append(name);
+
+            var gen = this.writeNested("generic", cursor);
+            if (gen.size() > 0)
+            {
+                cursor.append("<").list(gen).append(">");
+            }
+
+            cursor.element.<Integer>getValue("array_dimension").ifPresent((dim) ->
+            {
+                cursor.append("[]".repeat(dim));
+            });
+        }
+    );
+
+    public Writer ANNOTATION = new Writer(
+        "annotation",
+        (cursor) ->
+        {
+            var type = writeElement("type", cursor).orElse("Object");
+            cursor.append("@" + type);
+        }
+    );
+
+    public Writer GLOBAL_VARIABLE_DECLARATION = new Writer(
+        "global_variable_declaration",
+        (c) ->
+        {
+            var fl = new ArrayList<String>();
+            var am = c.element.<AM>getValue("access_modifier");
+            var isStatic = c.element.getFlag("static");
+            var isFinal = c.element.getFlag("final");
+
+            am.ifPresent((m) -> fl.add(m.name));
+            if (isStatic) fl.add("static");
+            if (isFinal) fl.add("final");
+            fl.add(this.writeElement("type", c).get());
+
+            fl.add(c.element.getName());
+            fl.add("=");
+            fl.add(this.writeElement("value", c).get());
+            
+            c.tab().list(fl).append(";").br();
+        }
+    );
+
+    public Writer RETURN_STATEMENT = new Writer(
+        "return_statement",
+        (c) ->
+        {
+            c.tab().append("return").append(this.writeElement("value", c.inline()).map(s -> " " + s).orElse("")).append(";").br();
+        }
+    );
+
+    public Writer METHOD = new Writer(
+        "method",
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            var am = cursor.element.<AM>getValue("access_modifier");
+            var isStatic = cursor.element.getFlag("static");
+            var isFinal = cursor.element.getFlag("final");
+            var name = cursor.element.getName();
+            var returnType = writeElement("return_type", cursor.next());
+
+            am.ifPresent((m) -> fl.add(m.name));
+            if (isStatic) fl.add("static");
+            if (isFinal) fl.add("final");
+            fl.add(returnType.orElse("Object"));
+
+            var parameters = writeNested("parameters", cursor);
+
+            fl.add(Case.CAMEL.convert(name) + "(" + String.join(", ", parameters) + ")");
+
+            var annotationList = writeNested("annotations", cursor);
+            var block = this.writeElement("block", cursor.noBr());
+            cursor.lines(annotationList)
+                .tab().list(fl).space();
+
+            if (block.isPresent())
+            {
+                cursor.append(block.get());
+            }
+            else
+            {
+                cursor.append("{").br().tab().append("}").br();
+            }
+        }
+    );
+
+    public Writer PARAMETER = new Writer(
+        "parameter",
+        (cursor) ->
+        {
+            var type = writeElement("type", cursor).orElse("Object");
+            var name = cursor.element.getName();
+            cursor.append(type + " " + name);
+        }
+    );
+
+    public Writer BLOCK = new Writer(
+        "block",
+        (cursor) ->
+        {
+            cursor.line("{");
+
+            var statements = writeNested("statements", cursor.next());
+            
+            for (var statement : statements)
+            {
+                cursor.append(statement);
+            }
+
+            cursor.line("}");
+        }
+    );
+
+    public Writer CLASS = new Writer(
+        "class", 
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            var am = cursor.element.<AM>getValue("access_modifier");
+            var isStatic = cursor.element.getFlag("static");
+            var isFinal = cursor.element.getFlag("final");
+            var name = cursor.element.getName();
+
+            am.ifPresent((m) -> fl.add(m.name));
+            if (isStatic) fl.add("static");
+            if (isFinal) fl.add("final");
+            fl.add("class");
+            fl.add(name == "" ? "Unnamed" : Case.PASCAL.convert(name));
+            fl.add("{");
+
+            var annotationList = writeNested("annotations", cursor);
+            cursor.lines(annotationList)
+                .lineList(fl);
+            
+            var nested = new ArrayList<String>();
+            this.writeNested("members", cursor.next(), nested);
+            
+            if (nested.size() > 0)
+            {
+                cursor.nested(nested);
+            }
+
+            cursor.line("}");
+        }
+    );
+
+    public Writer IF_STATEMENT = new Writer(
+        "if_statement", 
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            fl.add("if");
+            fl.add("(" + this.writeElement("expression", cursor).get() + ")");
+
+            cursor.tab().list(" ", fl).append(" ");
+
+            var block = this.writeElement("block", cursor.noBr());
+            cursor.append(block.orElse(" {}\n"));
+        }
+    );
+
+    public Writer WHILE_STATEMENT = new Writer(
+        "while_statement", 
+        (cursor) ->
+        {
+            var reverse = cursor.element.getFlag("reverse");
+            var fl = new ArrayList<String>();
+            fl.add("while");
+            fl.add("(" + this.writeElement("expression", cursor).get() + ")");
+
+            cursor.tab();
+            if (reverse)
+            {
+                cursor.append("do");
+            }
+            else
+            {
+                cursor.list(" ", fl);
+            }
+            cursor.space();
+
+            var block = this.writeElement("block", cursor.noBr());
+            cursor.append(block.orElse(" {}\n"));
+
+            if (reverse)
+            {
+                cursor.tab().list(" ", fl).br();
+            }
+        }
+    );
+
+    public Writer FOR_STATEMENT = new Writer(
+        "for_statement", 
+        (cursor) ->
+        {
+            var fl = new ArrayList<String>();
+            fl.add("for");
+            fl.add("(" + this.writeElement("iterator", cursor).get() + ")");
+
+            cursor.tab().list(fl).space();
+
+            var block = this.writeElement("block", cursor.noBr());
+            cursor.append(block.orElse("{}\n"));
+        }
+    );
+
+    public Writer FOR_ITERATOR = new Writer(
+        "for_iterator", 
+        (cursor) ->
+        {
+            cursor.append(this.writeElement("initializer", cursor).orElse(""))
+                .append("; ")
+                .append(this.writeElement("condition", cursor).orElse(""))
+                .append("; ")
+                .list(", ", this.writeNested("iterators", cursor));
+        }
+    );
+
+    public Writer FOR_COLLECTION_ITERATOR = new Writer(
+        "for_collection_iterator", 
+        (cursor) ->
+        {
+            cursor.append(this.writeElement("type", cursor).get())
+                .space()
+                .append(cursor.element.getName())
+                .append(" : ")
+                .append(this.writeElement("collection", cursor).get());
+        }
+    );
+
+    public Writer INSTANTIATE = new Writer(
+        "instantiate", 
+        (cursor) ->
+        {
+            cursor.append("new")
+                .space()
+                .append(this.writeElement("type", cursor).get())
+                .append("(")
+                .list(", ", this.writeNested("arguments", cursor))
+                .append(")");
+        }
+    );
+
+    public static enum AM
+    {
+        PUBLIC("public"),
+        PRIVATE("private"),
+        PROTECTED("protected");
+
+        public final String name;
+
+        private AM(String name)
+        {
+            this.name = name;
+        }
+    }
+}
