@@ -9,6 +9,10 @@ public sealed class Test
                 Console.WriteLine(s.Substring(2));
                 return;
             } 
+            else
+            {
+                int a = 2;
+            }
             
             Console.WriteLine("To short");
         }

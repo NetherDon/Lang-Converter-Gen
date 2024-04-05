@@ -23,6 +23,7 @@ COMMENTS FROM "//" TO eol
 IGNORE cr + lf + tab
 PRODUCTIONS
 CS_TO_JAVA =
+  [ Using ]
   ClassDeclaration<"class", false>
   (. C.end(); .)
 .
@@ -49,6 +50,10 @@ Literal<C.Group group> =
 
 BooleanLiteral =
   true | false
+.
+
+Using =
+  "using" QualifiedIdentifier<out String text> ";"
 .
 
 ClassDeclaration<String name, boolean list> =
@@ -270,6 +275,7 @@ ForeachStatement<C.Group group> =
 IfStatement<C.Group group> =
   (. C.els.push("if_statement", group); .)
   "if" "(" Expression<C.group("expression")> ")" NonEmptyStatement<C.group("block")>
+  "else" NonEmptyStatement<C.group("else")>
   (. C.els.pop(); .)
 .
 

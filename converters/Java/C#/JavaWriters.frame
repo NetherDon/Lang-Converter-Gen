@@ -386,7 +386,12 @@ public class JavaWriters extends Writers
             cursor.tab().list(" ", fl).append(" ");
 
             var block = this.writeElement("block", cursor.noBr());
-            cursor.append(block.orElse(" {}\n"));
+            var elseBlock = this.writeElement("else", cursor.noBr());
+            cursor.append(block.orElse("{}\n"));
+            if (elseBlock.isPresent())
+            {
+                cursor.tab().append("else ").append(elseBlock.orElse("{}\n"));
+            }
         }
     );
 

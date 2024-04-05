@@ -2,7 +2,7 @@
     "package": "cstojava",
     "jarName": "cstojava",
     "saveTempFiles": true,
-    "grammar": "./Grammar2.java.atg",
+    "grammar": "./Grammar.java.atg",
     "writers": "JavaWriters",
     "frames": {
         "other": [

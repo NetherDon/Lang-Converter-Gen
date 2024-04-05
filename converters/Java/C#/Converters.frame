@@ -442,13 +442,17 @@ public class Converters extends Writers
         {
             els.push("if_statement", getGroup(c.element, C.list("statements")));
 
-            var expression = c.element.<Element>getValue("expression").get();
+            var expression = c.element.getElement("expression").get();
             setGroup(expression, C.group("expression"));
             this.write(c.el(expression));
 
-            c.element.<Element>getValue("block").ifPresent((blockIn) ->
+            var block = c.element.getElement("block").get();
+            setGroup(block, C.group("block"));
+            this.write(c.el(block));
+
+            c.element.getElement("else").ifPresent((blockIn) ->
             {
-                setGroup(blockIn, C.group("block"));
+                setGroup(blockIn, C.group("else"));
                 this.write(c.el(blockIn));
             });
 
