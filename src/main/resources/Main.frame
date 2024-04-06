@@ -50,7 +50,12 @@ public class Main
 
         String jsonErrorsArray = String.join(", ", toJsonList(parser.errors.errors));
         String jsonWarningsArray = String.join(", ", toJsonList(parser.errors.warnings));
-        String text = createResult();
+
+        String text = "";
+        if (parser.errors.errors.size() == 0)
+        {
+            text = createResult();
+        }
 
         return String.format(
             "{\"text\": \"%s\", \"errors\": [%s], \"warnings\": [%s]}",

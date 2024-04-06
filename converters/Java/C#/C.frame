@@ -8,12 +8,15 @@ public class C
     public static Elements els = new Elements();
     public static boolean addHolderClass = false;
 
-    public static void end()
+    public static void end(Parser parser)
     {
         Converters conv = new Converters();
         Cursor c = new Cursor(els.file);
-        conv.load();
-        conv.write(c);
+        if (parser.errors.errors.size() == 0)
+        {
+            conv.load();
+            conv.write(c);
+        }
         //conv.addHolderClass(c);
     }
 

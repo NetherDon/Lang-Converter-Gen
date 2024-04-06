@@ -25,7 +25,7 @@ PRODUCTIONS
 CS_TO_JAVA =
   [ Using ]
   ClassDeclaration<"class", false>
-  (. C.end(); .)
+  (. C.end(this); .)
 .
 
 Identifier = ident.
@@ -182,9 +182,8 @@ EmptyStatement =
   ";"
 .
 
-NonEmptyStatement<C.Group group> =
-  Block<group>
-  | IF (C.isMethodCall(this)) MethodStatement<group>
+OpenStatement<C.Group group> =
+  IF (C.isMethodCall(this)) MethodStatement<group>
   | IF (C.isAssignment(this)) AssignmentStatement<group>
   | LocalVariableDeclarationStatement<group>
   | ReturnStatement<group>
@@ -193,6 +192,11 @@ NonEmptyStatement<C.Group group> =
   | DoWhileStatement<group>
   | ForStatement<group>
   | ForeachStatement<group>
+.
+
+NonEmptyStatement<C.Group group> =
+  Block<group>
+  | OpenStatement<group>
 .
 
 ReturnStatement<C.Group group> =
@@ -274,9 +278,14 @@ ForeachStatement<C.Group group> =
 
 IfStatement<C.Group group> =
   (. C.els.push("if_statement", group); .)
-  "if" "(" Expression<C.group("expression")> ")" NonEmptyStatement<C.group("block")>
-  "else" NonEmptyStatement<C.group("else")>
+  "if" "(" Expression<C.group("expression")> ")"
+  Block<C.group("block")>
+  [ ElseBlock<C.group("else")> ]
   (. C.els.pop(); .)
+.
+
+ElseBlock<C.Group group> =
+  "else" NonEmptyStatement<group>
 .
 
 WhileStatement<C.Group group> =
