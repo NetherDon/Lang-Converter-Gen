@@ -15,7 +15,7 @@
 java -jar ConverterGen.jar <args_file>
 ``` 
 В качестве аргумента args_file передается название файла с расширением .json, хранящий все параметры сборки конвертера, либо директория, в которой находится файл args.json. Все пути прописываются относительно расположения файла. 
-<br>Пример можно увидеть по пути [converters/Java/C#](./converters/Java/C#).
+<br>Пример можно увидеть по пути [converters/Java/C#](./converters/Java/C%23).
 
 <details>
   <summary>Параметры запуска</summary>
