@@ -9,7 +9,7 @@
             "./JavaWriters.frame",
             "./C.frame",
             "./Converters.frame",
-            "./Elements.frame",
+            "./TreeBuilder.frame",
             "./Utils.frame"
         ]
     }

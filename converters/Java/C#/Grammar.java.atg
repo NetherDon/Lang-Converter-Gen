@@ -253,7 +253,7 @@ ForStatement<C.Group group> =
 .
 
 ForInitializer<C.Group group> =
-  LocalVariableDeclaration<group>// { "," ExplicitlyLocalVariableDeclarator<group> }
+  LocalVariableDeclaration<group>
 .
 
 ForCondition<C.Group group> =

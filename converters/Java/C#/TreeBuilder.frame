@@ -1,17 +1,17 @@
 import static -----> package.Core.*;
 
-public class Elements
+public class TreeBuilder
 {
     public final Element file;
     private Element cur;
 
-    public Elements(Element file)
+    public TreeBuilder(Element file)
     {
         this.file = file;
         this.cur = file;
     }
 
-    public Elements()
+    public TreeBuilder()
     {
         this(new Element("file"));
     }

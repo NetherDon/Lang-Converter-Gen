@@ -1,0 +1,32 @@
+import java.util.ArrayList;
+import java.util.Collections;
+
+public class CustomWriters extends Core.Writers
+{
+    public Core.Writer TEST = new Core.Writer(
+        10,
+        (element) -> {
+            return element.getType().equals("element_type");
+        },
+        (cursor) -> {
+            var arg = cursor.element.getString("arg");
+            var isStatic = cursor.element.getFlag("static");
+
+            cursor.br();
+            if (isStatic) cursor.append("static").space();
+            cursor.append(arg);
+        }
+    );
+
+    public Core.Writer TEST2 = new Core.Writer(
+        "main",
+        (cursor) ->
+        {
+            this.writeElement("child", cursor).isPresent((el) -> {
+                cursor.append(el);
+            });
+        }
+    )
+}
+
+

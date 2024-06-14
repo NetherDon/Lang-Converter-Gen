@@ -121,7 +121,7 @@ class RawSettings
     public String jarFileName = "project";
     @JsonProperty(value = "grammar", required = true)
     public String grammarFileName = null;
-    @JsonProperty("writers")
+    @JsonProperty(value = "writers", required = true)
     public String writersClassName = null;
     @JsonProperty("frames")
     public RawFrames frames = new RawFrames(); 

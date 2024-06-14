@@ -14,7 +14,7 @@ public class Converters extends Writers
 {
     private static String GROUP_NAME = "parent-group-name";
     private static String GROUP_LIST = "parent-group-list";
-    public static Elements els = new Elements(Main.FILE);
+    public static TreeBuilder els = new TreeBuilder(Main.FILE);
     public static Utils.Scopes scope = new Utils.Scopes();
     private boolean addHolderClass = false;
 
